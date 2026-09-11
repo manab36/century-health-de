@@ -17,6 +17,16 @@ tests/                  # EDA, ERD, dbt design, debugging, and SQL work
 run_pipeline.py         # Pipeline entry point
 ```
 
+## Q&A files
+
+All assignment questions, analysis, and written answers are collected in the [`tests/`](tests/) folder:
+
+- [EDA notebook](tests/1.%20century_health_eda.ipynb)
+- [Entity relationship diagram](tests/2.%20erd.md)
+- [dbt project design](tests/3.%20dbt_project_design.md)
+- [Pipeline debugging notebook](tests/4.%20Debug%20This%20Pipeline.ipynb)
+- [SQL questions notebook](tests/5.%20sql%20questions.ipynb)
+
 ## How to run the pipeline
 
 The project uses `uv` for dependency management. From the repository root:
