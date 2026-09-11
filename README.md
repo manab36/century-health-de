@@ -76,6 +76,7 @@ The implemented staging code applies the relevant standardization, date and nume
 ## Entity relationship diagram
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "18px"}, "er": {"minEntityWidth": 220, "minEntityHeight": 60, "entityPadding": 12, "fontSize": 18}}}%%
 erDiagram
 	PATIENTS ||--o{ ENCOUNTERS : "patient_id"
 	PATIENTS ||--o{ MEDICATIONS : "patient_id"
