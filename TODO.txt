@@ -1,0 +1,229 @@
+Use pandas or any other frameworks that work well locally because this is just a project demo.
+Use uv for project management:
+
+```powershell
+uv sync
+uv run python run_pipeline.py
+```
+
+
+
+
+# Century Health — Data Engineer Take-Home Assignment
+
+## Welcome
+
+At Century Health, we work with longitudinal clinical data from a broad patient landscape, from messy CSVs to structured database exports, and transform it into reliable, analysis-ready assets that power research and pharmaceutical decision-making.
+
+This assignment simulates the kind of work you'd do on the job. We're not looking for perfection; we're looking for **how you think**, how you communicate your decisions, and how you handle messy, real-world data.
+
+**Estimated time:** 3 Hours. If you find yourself exceeding 3 hours, stop and submit what you have with a note on what you'd finish next.
+
+**We actively encourage the use of AI coding tools** (Cursor, Claude Code, ChatGPT, etc.). As you work, keep a running log, either inline as comments or in a separate section at the end, noting:
+
+- Which parts of the assignment you used AI for
+- Which tool(s) you used
+- What prompt or approach you used
+- Whether the output was used as-is, modified, or discarded and why
+
+This is not a gotcha, we use AI tools daily at Century Health. We want to understand *how* you use them, not whether you do.
+
+## The Data
+
+You'll be working with simulated clinical data from Synthea — a cohort of **Lupus patients in Texas**. Lupus is an autoimmune disease where the immune system attacks healthy tissues and organs.
+
+| **Dataset** | **Format** | **Description** | **Link** |
+| --- | --- | --- | --- |
+| patients.csv | CSV | Demographics: birth date, name, race, ethnicity, gender, location, income | Download |
+| encounters.parquet | Parquet | Visit-level info: visit type, diagnosis code, cost | Download |
+| symptoms.csv | CSV | Lupus symptom scores per patient: Rash, Joint Pain, Fatigue, Fever | Download |
+| medications.csv | CSV | Medication records: drug name, therapeutic code, reason, cost, dates | Download |
+| conditions.xlsx | Excel | Diagnoses per encounter: ICD code, description | Download |
+
+## Part 1 — Data Assessment *(~25 minutes)*
+
+### 1a. Entity Relationship Diagram
+
+Draw a simple diagram showing how the five datasets relate to one another. Identify the key join fields between them. This can be a hand-drawn image, a tool like Lucidchart/draw.io, or even ASCII.
+
+### 1b. Data Quality Audit
+
+Explore each dataset and document **every data quality issue you find**. For each issue, note:
+
+- Which dataset and column it affects
+- What the problem is
+- How you plan to fix it (or why you'd flag it for a downstream consumer)
+
+Think broadly: missing values, duplicates, type mismatches, inconsistent formatting, outliers, referential integrity issues, encoding problems, etc.
+
+**Tip:** The depth of your audit here matters. Spotting five issues is fine; spotting fifteen shows sharper data intuition.
+
+## Part 2 — Data Cleaning & Transformation Pipeline *(~45 minutes)*
+
+Build a Python pipeline (PySpark preferred; pandas acceptable) that does the following. Your code should be **modular, well-named, and documented**.
+
+### Step 1: Ingest
+
+Load all five datasets into DataFrames. Handle the different file formats gracefully — your ingestion functions should be reusable and not hardcoded.
+
+### Step 2: Clean
+
+Fix the issues you identified in Part 1. At minimum:
+
+- Standardize column names (lowercase, snake_case)
+- Correct data types (dates as dates, numerics as numerics)
+- Handle nulls, duplicates, and obvious outliers with a clear strategy
+- Normalize any inconsistent categorical values (e.g., race, gender fields)
+
+### Step 3: Transform — Unpack Symptoms
+
+The symptoms.csv contains a packed SYMPTOMS column where all four symptom scores (Rash, Joint Pain, Fatigue, Fever) are stored together in a single field.
+
+**Extract these into a structured, unpivoted format** — one row per patient per symptom, with columns for symptom_name and symptom_value. This table will serve as your observations layer downstream.
+
+### Step 4: Merge
+
+Join the cleaned datasets into a single **master analytical table** — one row per patient-encounter, enriched with conditions, medications, and symptom scores. Document any assumptions you make about join cardinality or which records to keep/drop.
+
+### Step 5: Testing *(Optional)*
+
+Write at least **2 pytest test cases** for functions in your pipeline. At least one test should check for a data correctness property (not just that the function runs without error).
+
+## Part 3 — dbt Project Design *(~30 minutes)*
+
+**Note:** You do not need to run dbt or have it installed. This is a design and written exercise.
+
+You've been asked to move the transformation logic from Part 2 into a **dbt project** that other engineers and analysts can maintain and build on.
+
+### 3a. Project Structure
+
+Define the folder and file structure of your dbt project. Show:
+
+- How you'd organize models/ into layers (e.g., staging, intermediate, marts)
+- Which models live in each layer and what they contain
+- Where sources, seeds, and tests are defined
+
+### 3b. Model Descriptions
+
+For at least **3 models**, write a short description (2–4 sentences each) of:
+
+- What the model does
+- What its grain is (one row = one what?)
+- What upstream models or sources it depends on
+
+### 3c. Testing Strategy *(Optional)*
+
+List at least **5 dbt tests** you'd apply across the project. For each, name the model and column it applies to, the test type, and why it matters for this dataset.
+
+Example: not_null on patients.patient_id — a null PK would cause silent fan-out joins in every downstream model.
+
+## Part 4 — Debug This Pipeline *(~25 minutes)*
+
+Below is a pandas pipeline a previous engineer wrote to load and process the medications dataset. **It contains several bugs** — some will cause errors, some are silent and will produce wrong results.
+
+Find and fix as many issues as you can. For each fix, add a comment explaining what was wrong and why your fix is correct.
+
+```sql
+import pandas as pd
+
+# Load medications
+meds = pd.read_csv("medications.csv")
+
+# Standardize column names
+meds.columns = meds.columns.str.lower()
+
+# Filter to relevant columns
+meds_filtered = meds[["patient", "description", "start", "stop", "totalcost"]]
+
+# Rename columns
+meds_filtered.rename(columns={
+    "patient": "patient_id",
+    "description": "medication_name",
+    "start": "start_date",
+    "stop": "end_date",
+    "totalcost": "total_cost"
+})
+
+# Cast date columns
+meds_filtered["start_date"] = pd.to_datetime(meds_filtered["start_date"])
+meds_filtered["end_date"] = pd.to_datetime(meds_filtered["end_date"])
+
+# Calculate duration in days
+meds_filtered["duration_days"] = (
+    meds_filtered["start_date"] - meds_filtered["end_date"]
+).dt.days
+
+# Deduplicate on patient and medication
+meds_deduped = meds_filtered.drop_duplicates(["patient_id", "medication_name"])
+
+# Filter to active medications only (no end date = still active)
+meds_active = meds_deduped[meds_deduped["end_date"] != None]
+
+# Compute average cost per medication
+avg_cost = meds_deduped.groupby("medication_name").agg(
+    avg_cost=("total_cost", "mean")
+).sort_values("avg_cost", ascending=True)
+
+# Write output
+avg_cost.to_csv("output/avg_med_cost.csv", index=True)
+```
+
+## Part 5 — SQL Challenge *(~20 minutes)*
+
+The following questions use a Snowflake schema based on your cleaned data. Write SQL for each. You don't need to run these — correctness and style are what matter.
+
+Assume the following tables exist:
+
+- patients — one row per patient, with patient_id, birth_date, race, gender, state
+- encounters — one row per visit, with encounter_id, patient_id, encounter_date, encounter_type, diagnosis_code
+- medications — one row per prescription, with medication_id, patient_id, medication_name, start_date, end_date, total_cost
+- observations — one row per patient per symptom (your unpivoted table), with patient_id, symptom_name, symptom_value, recorded_date
+
+### 5a.
+
+For each patient, calculate the **number of days between their first and most recent encounter**. Return only patients where this span is **greater than 365 days**. Include patient_id, first_encounter_date, last_encounter_date, and days_active.
+
+### 5b.
+
+A researcher wants to know: **for patients currently on medication** (i.e., end_date is null or in the future), what is the average Fatigue symptom score, broken down by medication name? Only include medications with at least 10 such patients. Round the average to 2 decimal places.
+
+**Note:** Feel free to use data warehouse-specific functions where they help — DATEDIFF, QUALIFY, FLATTEN, window functions, etc.
+
+## Reflection
+
+Before submitting, add a short section (bullet points are fine) covering:
+
+- What would you have done differently or improved with another hour?
+
+This isn't graded separately — it feeds into how we assess your self-awareness and communication style.
+
+## Submission
+
+Please submit:
+
+1. A **Jupyter Notebook or .py files** with your code, outputs, and written explanations
+2. Your **ERD diagram** (any format)
+3. Your **dbt project design** (can be in the notebook, a markdown file, or a folder structure screenshot)
+4. Any other supporting files
+
+Email your submission to sajjan@century.health with the subject line: **"Century Health Data Engineer Assignment – [Your Full Name] – Submission"**
+
+In your email, please include:
+
+- Roughly how long the assignment took
+- Any AI tools you used and how
+- Anything you'd improve or complete with more time
+
+## How You'll Be Assessed
+
+| **Dimension** | **What We're Looking For** |
+| --- | --- |
+| **Data Intuition** | Depth of quality issues found; quality of join and schema decisions |
+| **Code Quality** | Modularity, naming, docstrings, readability — write as if a teammate will extend it |
+| **Pipeline Thinking** | Logical layering, handling edge cases, defensiveness against bad data |
+| **dbt Design** | Understanding of transformation layers, grain awareness, testability |
+| **Debugging** | Ability to read unfamiliar code, identify silent vs. noisy bugs |
+| **Communication** | How clearly you document assumptions, trade-offs, and limitations |
+| **Learning Speed** | Comfort picking up new tools or concepts mid-task |
+
+*Questions? Reach out any time at sajjan@century.health. We aim to respond within 12 hou*
